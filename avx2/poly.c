@@ -4,6 +4,7 @@
 #include "fips202.h"
 #include "crypto_stream.h"
 #include "immintrin.h"
+#include "aes/aes.h"
 
 static const unsigned char nonce[8] = {0};
 
@@ -338,13 +339,19 @@ void poly_uniform(poly *a, const unsigned char *seed)
   uint16_t moduli[5] = {0,PARAM_Q,2*PARAM_Q,3*PARAM_Q,4*PARAM_Q}; // multiples of q for lookup
   unsigned int pos=0, ctr=0;
   uint16_t val, r;
-  uint64_t state[25];
-  unsigned int nblocks=13;
-  uint8_t buf[SHAKE128_RATE*nblocks];
+  unsigned int nblocks=140;
+  unsigned int AES_RATE = 16;
+  uint8_t buf[AES_RATE*nblocks];
 
-  shake128_absorb(state, seed, NEWHOPE_SEEDBYTES);
+  AES_KEY enc_key;
+  AES_set_encrypt_key(seed, 256, &enc_key);
 
-  shake128_squeezeblocks((unsigned char *) buf, nblocks, state);
+  unsigned char plaintext[AES_RATE*nblocks];
+  memset(plaintext, 0, AES_RATE*nblocks);
+  uint16_t i, counter = 0;
+  for (i = 0; i < nblocks; i++, counter++)
+    memcpy(plaintext+i*16, &counter, sizeof(counter));
+  AES_ECB_encrypt(plaintext, buf, AES_RATE*nblocks, enc_key.KEY, enc_key.nr);
 
   const __m256i zero = _mm256_setzero_si256();
   const __m256i modulus8 = _mm256_set1_epi32(PARAM_Q);
@@ -415,10 +422,12 @@ void poly_uniform(poly *a, const unsigned char *seed)
 
     pos += 32;
 
-    if(pos > SHAKE128_RATE*nblocks-32)
+    if(pos > AES_RATE*nblocks-2)
     {
       nblocks=1;
-      shake128_squeezeblocks((unsigned char *) buf,nblocks,state);
+      for (i = 0; i < nblocks; i++, counter++)
+        memcpy(plaintext+i*16, &counter, sizeof(counter));
+      AES_ECB_encrypt(plaintext, buf, AES_RATE*nblocks, enc_key.KEY, enc_key.nr);
 
       pos = 0;
     }
@@ -435,10 +444,13 @@ void poly_uniform(poly *a, const unsigned char *seed)
     if (r < 5) // q fits 5 times in 2^16, so accept if candidate < 5q
       a->coeffs[ctr++] = val - moduli[r]; // subtract q until in range [0,q)
 
-    if(pos > SHAKE128_RATE*nblocks-2)
+    if(pos > AES_RATE*nblocks-2)
     {
       nblocks=1;
-      shake128_squeezeblocks((unsigned char *) buf,nblocks,state);
+      for (i = 0; i < nblocks; i++, counter++)
+        memcpy(plaintext+i*16, &counter, sizeof(counter));
+      AES_ECB_encrypt(plaintext, buf, AES_RATE*nblocks, enc_key.KEY, enc_key.nr);
+
       pos = 0;
     }
   }
