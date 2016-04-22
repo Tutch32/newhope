@@ -70,14 +70,13 @@ void poly_tobytes(unsigned char *r, const poly *p)
   }
 }
 
-
-
 void poly_uniform(poly *a, const unsigned char *seed)
 {
+  uint16_t moduli[5] = {0,PARAM_Q,2*PARAM_Q,3*PARAM_Q,4*PARAM_Q}; // multiples of q for lookup
   unsigned int pos=0, ctr=0;
-  uint16_t val;
+  uint16_t val, r;
   uint64_t state[25];
-  unsigned int nblocks=16;
+  unsigned int nblocks=13;
   uint8_t buf[SHAKE128_RATE*nblocks];
 
   shake128_absorb(state, seed, NEWHOPE_SEEDBYTES);
@@ -86,10 +85,14 @@ void poly_uniform(poly *a, const unsigned char *seed)
 
   while(ctr < PARAM_N)
   {
-    val = (buf[pos] | ((uint16_t) buf[pos+1] << 8)) & 0x3fff; // Specialized for q = 12889
-    if(val < PARAM_Q)
-      a->coeffs[ctr++] = val;
+    val = (buf[pos] | ((uint16_t) buf[pos+1] << 8));
+
     pos += 2;
+
+    r = val/PARAM_Q;
+    if (r < 5) // q fits 5 times in 2^16, so accept if candidate < 5q
+      a->coeffs[ctr++] = val - moduli[r]; // subtract q until in range [0,q)
+
     if(pos > SHAKE128_RATE*nblocks-2)
     {
       nblocks=1;
@@ -98,7 +101,6 @@ void poly_uniform(poly *a, const unsigned char *seed)
     }
   }
 }
-
 
 extern void cbd(poly *r, unsigned char *b);
 
