@@ -4,6 +4,7 @@
 #include "fips202.h"
 #include "crypto_stream.h"
 #include "immintrin.h"
+#include "sha/sha256_mb.h"
 
 static const unsigned char nonce[8] = {0};
 
@@ -338,13 +339,30 @@ void poly_uniform(poly *a, const unsigned char *seed)
   uint16_t moduli[5] = {0,PARAM_Q,2*PARAM_Q,3*PARAM_Q,4*PARAM_Q}; // multiples of q for lookup
   unsigned int pos=0, ctr=0;
   uint16_t val, r;
-  uint64_t state[25];
-  unsigned int nblocks=13;
-  uint8_t buf[SHAKE128_RATE*nblocks];
 
-  shake128_absorb(state, seed, NEWHOPE_SEEDBYTES);
+  uint32_t counter = 0;
 
-  shake128_squeezeblocks((unsigned char *) buf, nblocks, state);
+  uint32_t nblocks=9; // 9 * 8 * 32 = 2304 > 2184 bytes that are needed on average
+  uint32_t numStreams = 8;
+
+  uint32_t SHA256_SIZE = 32;
+  uint32_t SHA256_INP_SIZE = SHA256_SIZE + sizeof(counter);
+
+  unsigned int SHA256_RATE = SHA256_SIZE * numStreams;
+  uint8_t buf[SHA256_RATE*nblocks];
+
+  uint8_t *input_buf;
+  input_buf = (unsigned char*) _mm_malloc(SHA256_INP_SIZE*numStreams, ALIGNMENT_BYTES);
+
+  uint16_t i, j = 0;
+  for (i = 0; i < nblocks; i++) {
+    for (j = 0; j < numStreams; j++, counter++) {
+      memcpy(input_buf+(j*SHA256_INP_SIZE), seed, 32);
+      memcpy(input_buf+(j*SHA256_INP_SIZE+SHA256_SIZE), &counter, sizeof(counter));
+    }
+
+    hash_keys_Simultaneous2((uint32_t *)(buf+i*SHA256_RATE), (uint32_t *)input_buf, numStreams);
+  }
 
   const __m256i zero = _mm256_setzero_si256();
   const __m256i modulus8 = _mm256_set1_epi32(PARAM_Q);
@@ -415,10 +433,14 @@ void poly_uniform(poly *a, const unsigned char *seed)
 
     pos += 32;
 
-    if(pos > SHAKE128_RATE*nblocks-32)
+    if(pos > SHA256_RATE*nblocks-32)
     {
       nblocks=1;
-      shake128_squeezeblocks((unsigned char *) buf,nblocks,state);
+      for (j = 0; j < numStreams; j++, counter++) {
+        memcpy(input_buf+(j*SHA256_INP_SIZE), seed, 32);
+        memcpy(input_buf+(j*SHA256_INP_SIZE+SHA256_SIZE), &counter, sizeof(counter));
+      }
+      hash_keys_Simultaneous2((uint32_t *)buf, (uint32_t *)input_buf, numStreams);
 
       pos = 0;
     }
@@ -435,10 +457,15 @@ void poly_uniform(poly *a, const unsigned char *seed)
     if (r < 5) // q fits 5 times in 2^16, so accept if candidate < 5q
       a->coeffs[ctr++] = val - moduli[r]; // subtract q until in range [0,q)
 
-    if(pos > SHAKE128_RATE*nblocks-2)
+    if(pos > SHA256_RATE*nblocks-2)
     {
       nblocks=1;
-      shake128_squeezeblocks((unsigned char *) buf,nblocks,state);
+      for (j = 0; j < numStreams; j++, counter++) {
+        memcpy(input_buf+(j*SHA256_INP_SIZE), seed, 32);
+        memcpy(input_buf+(j*SHA256_INP_SIZE+SHA256_SIZE), &counter, sizeof(counter));
+      }
+      hash_keys_Simultaneous2((uint32_t *)buf, (uint32_t *)input_buf, numStreams);
+
       pos = 0;
     }
   }
