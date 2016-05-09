@@ -26,3 +26,8 @@ Authors:
 (1) Intel Corporation, Israel Development Center, Haifa, Israel  
 (2) University of Haifa, Israel  
 (3) Ruhr University Bochum, Germany
+
+Copyright:
+----------
+
+Modified work Copyright (c) 2016, Shay Gueron and Fabian Schlieker
