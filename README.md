@@ -27,6 +27,11 @@ Authors:
 (2) University of Haifa, Israel  
 (3) Ruhr University Bochum, Germany
 
+Acknowledgement:
+----------------
+
+This research was supported by the PQCRYPTO project, which was partially funded by the European Commission Horizon 2020 research Programme, grant #645622, by the ISRAEL SCIENCE FOUNDATION (grant No. 1018/16), and by the Blavatnik Interdisciplinary Cyber Research Center (ICRC) at the Tel Aviv University.
+
 Copyright:
 ----------
 
